@@ -1,10 +1,12 @@
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
 import pandas as pd
 import numpy as np
 
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -127,13 +129,20 @@ DEFAULT_PARAMS = {
     "nb": {
         "var_smoothing": 5,
         "priors": None
+    },
+
+    "svm": {
+        "C": 1.0,
+        "kernel": "rbf",
+        "gamma": "scale"
     }
 }
 
 MODEL_NAMES = {
     "tree": "Decision Tree",
     "forest": "Random Forest",
-    "nb": "Naive Bayes"
+    "nb": "Naive Bayes",
+    "svm": "SVM"
 }
 
 
@@ -142,6 +151,10 @@ def build_model(model_name, params=None):
 
     if params is None:
         params = DEFAULT_PARAMS[model_name].copy()
+
+    steps = [
+        ("imputer", SimpleImputer(strategy="median"))
+    ]
 
     if model_name == "tree":
         classifier = DecisionTreeClassifier(
@@ -159,10 +172,14 @@ def build_model(model_name, params=None):
     elif model_name == "nb":
         classifier = GaussianNB(**params)
 
-    return Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("classifier", classifier)
-    ])
+    elif model_name == "svm":
+        # Для SVM важно масштабировать признаки
+        steps.append(("scaler", StandardScaler()))
+        classifier = SVC(**params)
+
+    steps.append(("classifier", classifier))
+
+    return Pipeline(steps)
 
 def big_F(model, X, y, cv):
     """Проверка модели с помощью 10-fold cross-validation."""
@@ -210,6 +227,24 @@ def get_param_grid(model_name, y):
             ],
             "classifier__priors": [None, equal_priors]
         }
+
+    elif model_name == "svm":
+        return [
+            # Линейное ядро: gamma не используется
+            {
+                "classifier__kernel": ["linear"],
+                "classifier__C": [0.1, 1, 10, 100]
+            },
+
+            # RBF-ядро: подбираем C и gamma
+            {
+                "classifier__kernel": ["rbf"],
+                "classifier__C": [0.1, 1, 10, 100],
+                "classifier__gamma": [
+                    "scale", "auto", 0.001, 0.01, 0.1, 1
+                ]
+            }
+        ]
 
 def tune_model(model_name, X, y, cv):
     """Поиск лучших гиперпараметров через GridSearchCV."""
@@ -339,6 +374,36 @@ def manual_params(model_name, y):
 
                 print("Ошибка: вероятности должны быть от 0 до 1,")
                 print("а их сумма должна равняться 1. Попробуйте снова.")
+        elif model_name == "svm":
+
+            value = input(
+                f"C [{params['C']}]: "
+            ).strip()
+
+            if value:
+                params["C"] = float(value)
+
+            value = input(
+                f"kernel [{params['kernel']}] "
+                "(linear/rbf/poly/sigmoid): "
+            ).strip().lower()
+
+            if value:
+                if value in ["linear", "rbf", "poly", "sigmoid"]:
+                    params["kernel"] = value
+                else:
+                    print("Неизвестное ядро. Оставляем значение по умолчанию.")
+
+            value = input(
+                f"gamma [{params['gamma']}] "
+                "(scale/auto/число): "
+            ).strip().lower()
+
+            if value:
+                if value in ["scale", "auto"]:
+                    params["gamma"] = value
+                else:
+                    params["gamma"] = float(value)
 
         else:
             params["priors"] = None
@@ -363,25 +428,24 @@ def main():
     print("1. Decision Tree")
     print("2. Random Forest")
     print("3. Naive Bayes")
-    print("4. Все модели")
+    print("4. SVM")
+    print("5. Все модели")
 
     model_choice = input("\nВыберите модель: ").strip()
 
-    if model_choice == "1":
-        selected_models = ["tree"]
+    model_options = {
+        "1": ["tree"],
+        "2": ["forest"],
+        "3": ["nb"],
+        "4": ["svm"],
+        "5": ["tree", "forest", "nb", "svm"]
+    }
 
-    elif model_choice == "2":
-        selected_models = ["forest"]
-
-    elif model_choice == "3":
-        selected_models = ["nb"]
-
-    elif model_choice == "4":
-        selected_models = ["tree", "forest", "nb"]
-
-    else:
+    if model_choice not in model_options:
         print("Неверный выбор модели.")
         return
+
+    selected_models = model_options[model_choice]
 
     print("\n===================================")
     print("       ВЫБОР РЕЖИМА")
@@ -437,7 +501,7 @@ def main():
                 all_results.append(results)
 
         # Запись результатов всех моделей в один CSV
-        if model_choice == "4":
+        if model_choice == "5":
 
             final_results = pd.concat(
                 all_results,
@@ -490,4 +554,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()

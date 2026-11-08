@@ -1,4 +1,18 @@
-""""""
+"""Алгоритм, который принимает решение к какому классу относится объект задавая вопросы касаемо
+признаков (например UUC <= 0.072? И так далее)
+
+Основные гиперпараметры:
+max_depth              - Максимальная глубина дерева
+min_samples_split      - Минимальное число объектов для разделения узла
+criterion              - Критерий оценки качества разделения (gini, entropy)
+min_samples_leaf       - Минимальное число объектов в листе
+max_features           - Количество признаков, рассматриваемых при разделении
+max_leaf_nodes         - Максимальное количество листьев
+ccp_alpha              - Сила обрезки дерева
+splitter               - Стратегия выбора разделения (best, random)
+class_weight           - Веса классов
+min_impurity_decrease  - Минимальное уменьшение неоднородности для разделения"""
+
 import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
@@ -49,9 +63,10 @@ X_train, X_test, y_train, y_test = train_test_split(
 model = Pipeline([
     ("imputer", SimpleImputer(strategy="median")),
     ("classifier", DecisionTreeClassifier(
-        max_depth=15,
-        min_samples_split=2,
-        criterion="gini",  # Критерий оценки качества разделения узлов
+        max_depth=15,           # Говорящее название.
+        min_samples_split=2,    # Минимальное количество элементов для разделения
+        criterion="gini",       # Критерий оценки качества разделения узлов, gini - измеряет неоднородность,
+                                # entropy - неопределённость
         random_state=42
     ))
 ])
