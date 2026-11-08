@@ -60,7 +60,7 @@ def tenV(model):
     """Функция получает модель и проверяет её с помощью 10-fold CV."""
 
     # Подготовка данных
-    df = pd.read_csv("../codon_usage.csv")
+    df = pd.read_csv("../codon_usage.csv", low_memory = False)
 
     df = df.dropna(subset=["Kingdom"])
     y = df["Kingdom"]
@@ -95,11 +95,12 @@ def tenV(model):
 
     print("Средняя точность:", scores.mean())
     print("Стандартное отклонение:", scores.std())
+    return scores.mean()
 
 def load_data():
     """Загрузка и подготовка датасета."""
 
-    df = pd.read_csv("../codon_usage.csv")
+    df = pd.read_csv("../codon_usage.csv", low_memory=False)
     df = df.dropna(subset=["Kingdom"])
 
     y = df["Kingdom"]
@@ -421,137 +422,341 @@ def main():
         random_state=42
     )
 
-    print("===================================")
-    print("       ВЫБОР МОДЕЛИ")
-    print("===================================")
+    while True:
+        print("===================================")
+        print("       ВЫБОР МОДЕЛИ")
+        print("===================================")
 
-    print("1. Decision Tree")
-    print("2. Random Forest")
-    print("3. Naive Bayes")
-    print("4. SVM")
-    print("5. Все модели")
+        print("1. Decision Tree")
+        print("2. Random Forest")
+        print("3. Naive Bayes")
+        print("4. SVM")
+        print("5. Все модели")
+        print("0. Выход")
 
-    model_choice = input("\nВыберите модель: ").strip()
+        model_choice = input("\nВыберите модель: ").strip()
 
-    model_options = {
-        "1": ["tree"],
-        "2": ["forest"],
-        "3": ["nb"],
-        "4": ["svm"],
-        "5": ["tree", "forest", "nb", "svm"]
-    }
+        model_options = {
+            "1": ["tree"],
+            "2": ["forest"],
+            "3": ["nb"],
+            "4": ["svm"],
+            "5": ["tree", "forest", "nb", "svm"],
+            "0": ["-1"]
+        }
 
-    if model_choice not in model_options:
-        print("Неверный выбор модели.")
-        return
+        if model_choice not in model_options:
+            print("Неверный выбор модели.")
+            continue
+        if model_choice == "0":
+            return
 
-    selected_models = model_options[model_choice]
+        selected_models = model_options[model_choice]
 
-    print("\n===================================")
-    print("       ВЫБОР РЕЖИМА")
-    print("===================================")
+        print("\n===================================")
+        print("       ВЫБОР РЕЖИМА")
+        print("===================================")
 
-    print("1. Автоматический подбор гиперпараметров")
-    print("2. Ручной ввод гиперпараметров")
-    print("3. Параметры по умолчанию")
+        print("1. Автоматический подбор гиперпараметров")
+        print("2. Ручной ввод гиперпараметров")
+        print("3. Параметры по умолчанию")
 
-    mode = input("\nВыберите режим: ").strip()
+        mode = input("\nВыберите режим: ").strip()
 
-    if mode not in ["1", "2", "3"]:
-        print("Неверный выбор режима.")
-        return
+        if mode not in ["1", "2", "3"]:
+            print("Неверный выбор режима.")
+            return
 
-    # Автоматический подбор гиперпараметров
-    if mode == "1":
+        # Автоматический подбор гиперпараметров
+        if mode == "1":
 
-        all_results = []
+            all_results = []
 
-        for model_name in selected_models:
+            for model_name in selected_models:
 
-            search = tune_model(
-                model_name,
-                X,
-                y,
-                cv
-            )
-
-            # Сохраняем полные результаты поиска,
-            # только если выбраны все модели.
-            if model_choice == "4":
-
-                results = pd.DataFrame(search.cv_results_)
-
-                results = results[[
-                    "params",
-                    "mean_test_score",
-                    "std_test_score",
-                    "rank_test_score"
-                ]].copy()
-
-                results.insert(
-                    0,
-                    "model",
-                    MODEL_NAMES[model_name]
+                search = tune_model(
+                    model_name,
+                    X,
+                    y,
+                    cv
                 )
 
-                results["is_best"] = (
-                    results["rank_test_score"] == 1
+                # Сохраняем полные результаты поиска,
+                # только если выбраны все модели.
+                if model_choice == "5":
+
+                    results = pd.DataFrame(search.cv_results_)
+
+                    results = results[[
+                        "params",
+                        "mean_test_score",
+                        "std_test_score",
+                        "rank_test_score"
+                    ]].copy()
+
+                    results.insert(
+                        0,
+                        "model",
+                        MODEL_NAMES[model_name]
+                    )
+
+                    results["is_best"] = (
+                        results["rank_test_score"] == 1
+                    )
+
+                    all_results.append(results)
+
+            # Запись результатов всех моделей в один CSV
+            if model_choice == "5":
+
+                final_results = pd.concat(
+                    all_results,
+                    ignore_index=True
                 )
 
-                all_results.append(results)
+                final_results = final_results.sort_values(
+                    ["model", "rank_test_score"]
+                )
 
-        # Запись результатов всех моделей в один CSV
-        if model_choice == "5":
+                filename = "hyperparameter_results.csv"
 
-            final_results = pd.concat(
-                all_results,
-                ignore_index=True
-            )
+                final_results.to_csv(
+                    filename,
+                    index=False,
+                    encoding="utf-8-sig"
+                )
 
-            final_results = final_results.sort_values(
-                ["model", "rank_test_score"]
-            )
+                print(f"\nРезультаты сохранены в файл: {filename}")
 
-            filename = "hyperparameter_results.csv"
+        # Ручной ввод параметров
+        elif mode == "2":
 
-            final_results.to_csv(
-                filename,
-                index=False,
-                encoding="utf-8-sig"
-            )
+            for model_name in selected_models:
 
-            print(f"\nРезультаты сохранены в файл: {filename}")
+                params = manual_params(model_name, y)
 
-    # Ручной ввод параметров
-    elif mode == "2":
+                print("\nИспользуемые параметры:")
+                print(params)
 
-        for model_name in selected_models:
+                model = build_model(model_name, params)
 
-            params = manual_params(model_name, y)
+                print(f"\nПроверка {MODEL_NAMES[model_name]}:")
 
-            print("\nИспользуемые параметры:")
-            print(params)
+                big_F(model, X, y, cv)
 
-            model = build_model(model_name, params)
+        # Параметры по умолчанию
+        elif mode == "3":
 
-            print(f"\nПроверка {MODEL_NAMES[model_name]}:")
+            for model_name in selected_models:
 
-            big_F(model, X, y, cv)
+                params = DEFAULT_PARAMS[model_name].copy()
 
-    # Параметры по умолчанию
-    elif mode == "3":
+                print(f"\nПроверка {MODEL_NAMES[model_name]}")
+                print("Параметры:", params)
 
-        for model_name in selected_models:
+                model = build_model(model_name, params)
 
-            params = DEFAULT_PARAMS[model_name].copy()
-
-            print(f"\nПроверка {MODEL_NAMES[model_name]}")
-            print("Параметры:", params)
-
-            model = build_model(model_name, params)
-
-            big_F(model, X, y, cv)
+                big_F(model, X, y, cv)
 
 
 if __name__ == "__main__":
-    main()
+
+    # Decision tree
+    results = []
+
+    for depth in [5, 10, 15, 20]:
+        for ss in [2, 5, 7]:
+            for criterion in ["gini", "entropy"]:
+                print(f"Глубина дерева: {depth}")
+                print(f"Sample split: {ss}")
+                print(f"Критерий: {criterion}")
+                model = Pipeline([
+                    ("imputer", SimpleImputer(strategy="median")),
+                    ("classifier", DecisionTreeClassifier(
+                        max_depth=15,  # Говорящее название.
+                        min_samples_split=2,  # Минимальное количество элементов для разделения
+                        criterion="gini",  # Критерий оценки качества разделения узлов, gini - измеряет неоднородность,
+                        # entropy - неопределённость
+                        random_state=42
+                    ))
+                ])
+                mean_score = tenV(model)
+
+                results.append({
+                    "max_depth": depth,
+                    "min_samples_split": ss,
+                    "criterion": criterion,
+                    "mean_score": mean_score
+                })
+
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(
+        "decision_tree_results.csv",
+        index=False,
+        encoding="utf-8-sig"
+    )
+    best_result = results_df.loc[results_df["mean_score"].idxmax()]
+    print("\n===================================")
+    print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
+    print("===================================")
+
+    print(f"Глубина дерева: {best_result['max_depth']}")
+    print(f"Sample split: {best_result['min_samples_split']}")
+    print(f"Критерий: {best_result['criterion']}")
+    print(f"Средняя точность: {best_result['mean_score']:.4f}")
+
+    print("\nВсе результаты:")
+    print(results_df.sort_values(
+        by="mean_score",
+        ascending=False
+    ).to_string(index=False))
+
+    print("\nРезультаты сохранены в decision_tree_results.csv")
+
+
+    # Random forest
+    results = []
+
+    for n_estim in [100, 200]:
+        for depth in [10, 15, 20]:
+            for feature in ["sqrt", "log2"]:
+                print(f"Количество деревьев в лесу: {n_estim}")
+                print(f"Глубина деревьев: {depth}")
+                print(f"Оценка значений: {feature}")
+                model = Pipeline([
+                    ("imputer", SimpleImputer(strategy="median")),
+                    ("classifier", RandomForestClassifier(
+                        n_estimators=n_estim,  # количество деревьев в лесу
+                        max_depth=depth,
+                        max_features=feature,
+                        random_state=42,
+                        n_jobs=-1  # использовать все ядра процессора
+                    ))
+                ])
+                mean_score = tenV(model)
+
+                results.append({
+                    "n_estimators": n_estim,
+                    "max_depth": depth,
+                    "max_features": feature,
+                    "mean_score": mean_score
+                })
+
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(
+        "random_forest_results.csv",
+        index=False,
+        encoding="utf-8-sig"
+    )
+    best_result = results_df.loc[results_df["mean_score"].idxmax()]
+    print("\n===================================")
+    print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
+    print("===================================")
+
+    print(f"Количество деревьев: {best_result['n_estimators']}")
+    print(f"Глубина деревьев: {best_result['max_depth']}")
+    print(f"Количество признаков: {best_result['max_features']}")
+    print(f"Средняя точность: {best_result['mean_score']:.4f}")
+
+    print("\nВсе результаты:")
+    print(results_df.sort_values(
+        by="mean_score",
+        ascending=False
+    ).to_string(index=False))
+
+    print("\nРезультаты сохранены в random_forest_results.csv")
+
+    # Naive Bayes
+    results = []
+
+    for s in [1e-12, 1e-9, 1e-6, 1e-3, 1, 2, 3, 4, 5, 6, 8, 10]:
+        print(f"smoothing: {s}")
+        model = Pipeline([
+            ("imputer", SimpleImputer(strategy="median")),
+            ("classifier", GaussianNB(
+                var_smoothing=s,  # Добавочная величина к дисперсии выборки для стабилизации вычисления
+                priors=None  # Можно задать вероятности классов самому, но лучше оставить None, так программа
+                # посчитает сама, а сидеть и задавать всем классам вероятности не самое весёлое занятие
+                # так что делать этого я не буду, просто оставлю как показатель того что это возможно.
+            ))
+        ])
+        mean_score = tenV(model)
+
+        results.append({
+            "var_smoothing": s,
+            "mean_score": mean_score
+        })
+
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(
+        "naive_bayes_results.csv",
+        index=False,
+        encoding="utf-8-sig"
+    )
+    best_result = results_df.loc[results_df["mean_score"].idxmax()]
+    print("\n===================================")
+    print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
+    print("===================================")
+
+    print(f"Добавочная дисперсия: {best_result['var_smoothing']}")
+    print(f"Средняя точность: {best_result['mean_score']:.4f}")
+
+    print("\nВсе результаты:")
+    print(results_df.sort_values(
+        by="mean_score",
+        ascending=False
+    ).to_string(index=False))
+
+    print("\nРезультаты сохранены в naive_bayes_results.csv")
+
+    # SVM
+    results = []
+
+    for C in [0.1, 1, 10, 100]:
+        for gamma in ["scale", "auto", 0.001, 0.01, 0.1, 1]:
+            print(f"Fine: {C}")
+            print(f"Gamma: {gamma}")
+            model = Pipeline([
+                ("imputer", SimpleImputer(strategy="median")),
+                ("scaler", StandardScaler()),
+                ("classifier", SVC(
+                    C=C,          # Штраф за ошибку классификации, меньше штраф - проще гиперплоскость,
+                                    # больше штраф - выше шанс переобучения.
+                    kernel="rbf",   # Форма гиперплоскости. Linear - линейная граница, rbf - нелинейная граница,
+                                    # poly - полиномиальная, sigmoid - граница на основе сигмоидальной функции.
+                    gamma=gamma   # Влияние отдельных объектов на форму границы, условно то насколько сложную
+                                    # фигуру построит алгоритм, низкое значение - "мягкая" форма повторяющая
+                                    # форму границы классов плавно, высокое значение - "жесткая" форма,
+                                    # как-бы "плотно" огибающая оба класса. "scale" значит автоматический расчёт значения.
+                ))
+            ])
+            mean_score = tenV(model)
+
+            results.append({
+                "C": C,
+                "gamma": gamma,
+                "mean_score": mean_score
+            })
+
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(
+        "SVM_results.csv",
+        index=False,
+        encoding="utf-8-sig"
+    )
+    best_result = results_df.loc[results_df["mean_score"].idxmax()]
+    print("\n===================================")
+    print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
+    print("===================================")
+
+    print(f"Fine: {best_result['C']}")
+    print(f"gamma: {best_result['gamma']}")
+    print(f"Средняя точность: {best_result['mean_score']:.4f}")
+
+    print("\nВсе результаты:")
+    print(results_df.sort_values(
+        by="mean_score",
+        ascending=False
+    ).to_string(index=False))
+
+    print("\nРезультаты сохранены в SVM_results.csv")
