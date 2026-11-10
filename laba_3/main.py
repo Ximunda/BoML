@@ -1,3 +1,41 @@
+"""Database: https://archive.ics.uci.edu/dataset/577/codon+usage
+
+print(df['Kingdom'].unique())
+11 kingdoms: ['vrl', 'arc', 'bct', 'phg', 'plm', 'pln', 'inv', 'vrt', 'mam', 'rod', 'pri']
+
+bct (bacteria)
+inv (invertebrates)
+mam (mammals)
+pln (plants)
+pri (primates)
+rod (rodents)
+vrt (vertebrates)
+
+The kingdoms are kinda fake, since rodents are mammals, mammals are vertebrates, etc.
+
+514 different genus names
+
+print(df.shape)
+(13028, 69)
+
+Codons: 4 letters, 3 letter per codon = 64 combinations, with some producing the same bio stuff
+and 3 being stop codons (stop here). Also, there are start codons
+
+The 'DNAtype' is denoted as an integer for the genomic composition in the species:
+0-genomic,
+1-mitochondrial,
+2-chloroplast,
+3-cyanelle,
+4-plastid,
+5-nucleomorph,
+6-secondary_endosymbiont,
+7-chromoplast,
+8-leucoplast,
+9-NA,
+10-proplastid,
+11-apicoplast,
+12-kinetoplast.
+"""
 import pandas as pd
 import numpy as np
 
@@ -56,13 +94,14 @@ def big_f(model):
     print("Точность:", accuracy)
 
 
-def tenV(model):
+def tenV(model, DEV=False):
     """Функция получает модель и проверяет её с помощью 10-fold CV."""
 
     # Подготовка данных
     df = pd.read_csv("../codon_usage.csv", low_memory = False)
 
     df = df.dropna(subset=["Kingdom"])
+    testing_el = df.iloc[0]
     y = df["Kingdom"]
     X = df.drop(columns=["Kingdom", "SpeciesName", "SpeciesID"])
 
@@ -95,6 +134,19 @@ def tenV(model):
 
     print("Средняя точность:", scores.mean())
     print("Стандартное отклонение:", scores.std())
+
+    if DEV:
+        testing_y = testing_el["Kingdom"]
+        testing_X = testing_el.drop(columns=["Kingdom", "SpeciesName", "SpeciesID"])
+        testing_X = pd.get_dummies(testing_X, columns=["DNAtype"])
+        for col in testing_X.columns:
+            testing_X[col] = pd.to_numeric(testing_X[col], errors="coerce")
+
+        pred = model.predict(testing_X)
+
+        print(f"Prediction: {pred}")
+        print(f"Real: {testing_y}")
+
     return scores.mean()
 
 def load_data():
@@ -564,7 +616,7 @@ if __name__ == "__main__":
     # Decision tree
     results = []
 
-    for depth in [5, 10, 15, 20]:
+    for depth in [5, 10, 15, 20, 50, 100]:
         for ss in [2, 5, 7]:
             for criterion in ["gini", "entropy"]:
                 print(f"Глубина дерева: {depth}")
@@ -573,9 +625,9 @@ if __name__ == "__main__":
                 model = Pipeline([
                     ("imputer", SimpleImputer(strategy="median")),
                     ("classifier", DecisionTreeClassifier(
-                        max_depth=15,  # Говорящее название.
-                        min_samples_split=2,  # Минимальное количество элементов для разделения
-                        criterion="gini",  # Критерий оценки качества разделения узлов, gini - измеряет неоднородность,
+                        max_depth=depth,  # Говорящее название.
+                        min_samples_split=ss,  # Минимальное количество элементов для разделения
+                        criterion=criterion,  # Критерий оценки качества разделения узлов, gini - измеряет неоднородность,
                         # entropy - неопределённость
                         random_state=42
                     ))
@@ -760,3 +812,6 @@ if __name__ == "__main__":
     ).to_string(index=False))
 
     print("\nРезультаты сохранены в SVM_results.csv")
+
+    #TODO: тупо расписать таймер для inference (теперь tenV с DEV=True будет выводить предсказание)
+    # ((в нём надо сделать возврат модели а подсчёт времени уже в main))
