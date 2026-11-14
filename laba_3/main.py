@@ -94,7 +94,7 @@ def big_f(model):
     print("Точность:", accuracy)
 
 
-def tenV(model, DEV=False):
+def tenV(model):
     """Функция получает модель и проверяет её с помощью 10-fold CV."""
 
     # Подготовка данных
@@ -135,19 +135,45 @@ def tenV(model, DEV=False):
     print("Средняя точность:", scores.mean())
     print("Стандартное отклонение:", scores.std())
 
-    if DEV:
-        testing_y = testing_el["Kingdom"]
-        testing_X = testing_el.drop(columns=["Kingdom", "SpeciesName", "SpeciesID"])
-        testing_X = pd.get_dummies(testing_X, columns=["DNAtype"])
-        for col in testing_X.columns:
-            testing_X[col] = pd.to_numeric(testing_X[col], errors="coerce")
-
-        pred = model.predict(testing_X)
-
-        print(f"Prediction: {pred}")
-        print(f"Real: {testing_y}")
-
     return scores.mean()
+
+def time_tests():
+    DT_model = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("classifier", DecisionTreeClassifier(
+            max_depth=20,
+            min_samples_split=2,
+            criterion="entropy",
+            random_state=42
+        ))
+    ])
+    RF_model = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("classifier", RandomForestClassifier(
+            n_estimators=200,
+            max_depth=20,
+            max_features="log2",
+            random_state=42,
+            n_jobs=-1
+        ))
+    ])
+    NB_model = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("classifier", GaussianNB(
+            var_smoothing=3.0,
+            priors=None
+        ))
+    ])
+    SVC_model = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler()),
+        ("classifier", SVC(
+            C=10.0,
+            kernel="rbf",
+            gamma="scale"
+        ))
+    ])
+
 
 def load_data():
     """Загрузка и подготовка датасета."""
@@ -812,6 +838,3 @@ if __name__ == "__main__":
     ).to_string(index=False))
 
     print("\nРезультаты сохранены в SVM_results.csv")
-
-    #TODO: тупо расписать таймер для inference (теперь tenV с DEV=True будет выводить предсказание)
-    # ((в нём надо сделать возврат модели а подсчёт времени уже в main))
