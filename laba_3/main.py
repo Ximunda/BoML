@@ -36,6 +36,7 @@ The 'DNAtype' is denoted as an integer for the genomic composition in the specie
 11-apicoplast,
 12-kinetoplast.
 """
+import time
 import pandas as pd
 import numpy as np
 
@@ -137,7 +138,9 @@ def tenV(model):
 
     return scores.mean()
 
+
 def time_tests():
+    # Создаём модели и задаём им параметры при которых они выдают лучший результат
     DT_model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("classifier", DecisionTreeClassifier(
@@ -147,6 +150,7 @@ def time_tests():
             random_state=42
         ))
     ])
+
     RF_model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("classifier", RandomForestClassifier(
@@ -157,6 +161,7 @@ def time_tests():
             n_jobs=-1
         ))
     ])
+
     NB_model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("classifier", GaussianNB(
@@ -164,6 +169,7 @@ def time_tests():
             priors=None
         ))
     ])
+
     SVC_model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("scaler", StandardScaler()),
@@ -173,6 +179,73 @@ def time_tests():
             gamma="scale"
         ))
     ])
+
+    # Загружаем данные
+    X, y = load_data()
+
+    # Разделяем выборку
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y
+    )
+
+    # Берём 1000 элементов тестовой выборки
+    X_test_1000 = X_test.iloc[:1000]
+
+    models = {
+        "Decision Tree": DT_model,
+        "Random Forest": RF_model,
+        "Naive Bayes": NB_model,
+        "SVM": SVC_model
+    }
+
+    results = []
+
+    for name, model in models.items():
+
+        print(f"\nПроверка {name}")
+
+        # Обучаем модель (не включаем это время в inference)
+        model.fit(X_train, y_train)
+
+        # Прогрев: первый запуск не учитываем
+        model.predict(X_test_1000.iloc[:10])
+
+        # Измеряем время предсказания
+        start = time.perf_counter()
+
+        model.predict(X_test_1000)
+
+        inference_time = time.perf_counter() - start
+
+        # Среднее время на один объект
+        avg_time = inference_time / len(X_test_1000)
+
+        results.append({
+            "Model": name,
+            "Inference Time (1000 objects)": inference_time,
+            "Average Time (1 object)": avg_time
+        })
+
+        print(f"Время на 1000 объектов: {inference_time:.6f} сек.")
+        print(f"Среднее время на объект: {avg_time:.8f} сек.")
+
+    # Создаём таблицу и сохраняем результаты
+    results_df = pd.DataFrame(results)
+
+    results_df.to_csv(
+        "inference_time_results.csv",
+        index=False,
+        encoding="utf-8-sig"
+    )
+
+    print("\nИТОГОВЫЕ РЕЗУЛЬТАТЫ")
+    print(results_df.to_string(index=False))
+
+    print("\nРезультаты сохранены в inference_time_results.csv")
+
 
 
 def load_data():
@@ -638,203 +711,219 @@ def main():
 
 
 if __name__ == "__main__":
+    while True:
+        ch = input( "Выберите действие:\n\n"
+                    "1. Запустить проверку времени\n"
+                    "5. Запустить подбор параметров моделей (НЕ РЕКОМЕНДУЕТСЯ)\n"
+                    "0. Выход\n"
+                    ">>> ")
+        if ch == "0":
+            break
+        elif ch == "1":
+            time_tests()
+            continue
+        elif ch == "5":
+            ch1 = input('Вы УВЕРЕНЫ???\n(Введите "подтверждаю")\n\n>>> ').lower()
+            if ch1 == "подтверждаю":
+                # Decision tree
+                results = []
 
-    # Decision tree
-    results = []
+                for depth in [5, 10, 15, 20, 50, 100]:
+                    for ss in [2, 5, 7]:
+                        for criterion in ["gini", "entropy"]:
+                            print(f"Глубина дерева: {depth}")
+                            print(f"Sample split: {ss}")
+                            print(f"Критерий: {criterion}")
+                            model = Pipeline([
+                                ("imputer", SimpleImputer(strategy="median")),
+                                ("classifier", DecisionTreeClassifier(
+                                    max_depth=depth,  # Говорящее название.
+                                    min_samples_split=ss,  # Минимальное количество элементов для разделения
+                                    criterion=criterion,  # Критерий оценки качества разделения узлов, gini - измеряет неоднородность,
+                                    # entropy - неопределённость
+                                    random_state=42
+                                ))
+                            ])
+                            mean_score = tenV(model)
 
-    for depth in [5, 10, 15, 20, 50, 100]:
-        for ss in [2, 5, 7]:
-            for criterion in ["gini", "entropy"]:
-                print(f"Глубина дерева: {depth}")
-                print(f"Sample split: {ss}")
-                print(f"Критерий: {criterion}")
-                model = Pipeline([
-                    ("imputer", SimpleImputer(strategy="median")),
-                    ("classifier", DecisionTreeClassifier(
-                        max_depth=depth,  # Говорящее название.
-                        min_samples_split=ss,  # Минимальное количество элементов для разделения
-                        criterion=criterion,  # Критерий оценки качества разделения узлов, gini - измеряет неоднородность,
-                        # entropy - неопределённость
-                        random_state=42
-                    ))
-                ])
-                mean_score = tenV(model)
+                            results.append({
+                                "max_depth": depth,
+                                "min_samples_split": ss,
+                                "criterion": criterion,
+                                "mean_score": mean_score
+                            })
 
-                results.append({
-                    "max_depth": depth,
-                    "min_samples_split": ss,
-                    "criterion": criterion,
-                    "mean_score": mean_score
-                })
+                results_df = pd.DataFrame(results)
+                results_df.to_csv(
+                    "decision_tree_results.csv",
+                    index=False,
+                    encoding="utf-8-sig"
+                )
+                best_result = results_df.loc[results_df["mean_score"].idxmax()]
+                print("\n===================================")
+                print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
+                print("===================================")
 
-    results_df = pd.DataFrame(results)
-    results_df.to_csv(
-        "decision_tree_results.csv",
-        index=False,
-        encoding="utf-8-sig"
-    )
-    best_result = results_df.loc[results_df["mean_score"].idxmax()]
-    print("\n===================================")
-    print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
-    print("===================================")
+                print(f"Глубина дерева: {best_result['max_depth']}")
+                print(f"Sample split: {best_result['min_samples_split']}")
+                print(f"Критерий: {best_result['criterion']}")
+                print(f"Средняя точность: {best_result['mean_score']:.4f}")
 
-    print(f"Глубина дерева: {best_result['max_depth']}")
-    print(f"Sample split: {best_result['min_samples_split']}")
-    print(f"Критерий: {best_result['criterion']}")
-    print(f"Средняя точность: {best_result['mean_score']:.4f}")
+                print("\nВсе результаты:")
+                print(results_df.sort_values(
+                    by="mean_score",
+                    ascending=False
+                ).to_string(index=False))
 
-    print("\nВсе результаты:")
-    print(results_df.sort_values(
-        by="mean_score",
-        ascending=False
-    ).to_string(index=False))
-
-    print("\nРезультаты сохранены в decision_tree_results.csv")
+                print("\nРезультаты сохранены в decision_tree_results.csv")
 
 
-    # Random forest
-    results = []
+                # Random forest
+                results = []
 
-    for n_estim in [100, 200]:
-        for depth in [10, 15, 20]:
-            for feature in ["sqrt", "log2"]:
-                print(f"Количество деревьев в лесу: {n_estim}")
-                print(f"Глубина деревьев: {depth}")
-                print(f"Оценка значений: {feature}")
-                model = Pipeline([
-                    ("imputer", SimpleImputer(strategy="median")),
-                    ("classifier", RandomForestClassifier(
-                        n_estimators=n_estim,  # количество деревьев в лесу
-                        max_depth=depth,
-                        max_features=feature,
-                        random_state=42,
-                        n_jobs=-1  # использовать все ядра процессора
-                    ))
-                ])
-                mean_score = tenV(model)
+                for n_estim in [100, 200]:
+                    for depth in [10, 15, 20]:
+                        for feature in ["sqrt", "log2"]:
+                            print(f"Количество деревьев в лесу: {n_estim}")
+                            print(f"Глубина деревьев: {depth}")
+                            print(f"Оценка значений: {feature}")
+                            model = Pipeline([
+                                ("imputer", SimpleImputer(strategy="median")),
+                                ("classifier", RandomForestClassifier(
+                                    n_estimators=n_estim,  # количество деревьев в лесу
+                                    max_depth=depth,
+                                    max_features=feature,
+                                    random_state=42,
+                                    n_jobs=-1  # использовать все ядра процессора
+                                ))
+                            ])
+                            mean_score = tenV(model)
 
-                results.append({
-                    "n_estimators": n_estim,
-                    "max_depth": depth,
-                    "max_features": feature,
-                    "mean_score": mean_score
-                })
+                            results.append({
+                                "n_estimators": n_estim,
+                                "max_depth": depth,
+                                "max_features": feature,
+                                "mean_score": mean_score
+                            })
 
-    results_df = pd.DataFrame(results)
-    results_df.to_csv(
-        "random_forest_results.csv",
-        index=False,
-        encoding="utf-8-sig"
-    )
-    best_result = results_df.loc[results_df["mean_score"].idxmax()]
-    print("\n===================================")
-    print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
-    print("===================================")
+                results_df = pd.DataFrame(results)
+                results_df.to_csv(
+                    "random_forest_results.csv",
+                    index=False,
+                    encoding="utf-8-sig"
+                )
+                best_result = results_df.loc[results_df["mean_score"].idxmax()]
+                print("\n===================================")
+                print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
+                print("===================================")
 
-    print(f"Количество деревьев: {best_result['n_estimators']}")
-    print(f"Глубина деревьев: {best_result['max_depth']}")
-    print(f"Количество признаков: {best_result['max_features']}")
-    print(f"Средняя точность: {best_result['mean_score']:.4f}")
+                print(f"Количество деревьев: {best_result['n_estimators']}")
+                print(f"Глубина деревьев: {best_result['max_depth']}")
+                print(f"Количество признаков: {best_result['max_features']}")
+                print(f"Средняя точность: {best_result['mean_score']:.4f}")
 
-    print("\nВсе результаты:")
-    print(results_df.sort_values(
-        by="mean_score",
-        ascending=False
-    ).to_string(index=False))
+                print("\nВсе результаты:")
+                print(results_df.sort_values(
+                    by="mean_score",
+                    ascending=False
+                ).to_string(index=False))
 
-    print("\nРезультаты сохранены в random_forest_results.csv")
+                print("\nРезультаты сохранены в random_forest_results.csv")
 
-    # Naive Bayes
-    results = []
+                # Naive Bayes
+                results = []
 
-    for s in [1e-12, 1e-9, 1e-6, 1e-3, 1, 2, 3, 4, 5, 6, 8, 10]:
-        print(f"smoothing: {s}")
-        model = Pipeline([
-            ("imputer", SimpleImputer(strategy="median")),
-            ("classifier", GaussianNB(
-                var_smoothing=s,  # Добавочная величина к дисперсии выборки для стабилизации вычисления
-                priors=None  # Можно задать вероятности классов самому, но лучше оставить None, так программа
-                # посчитает сама, а сидеть и задавать всем классам вероятности не самое весёлое занятие
-                # так что делать этого я не буду, просто оставлю как показатель того что это возможно.
-            ))
-        ])
-        mean_score = tenV(model)
+                for s in [1e-12, 1e-9, 1e-6, 1e-3, 1, 2, 3, 4, 5, 6, 8, 10]:
+                    print(f"smoothing: {s}")
+                    model = Pipeline([
+                        ("imputer", SimpleImputer(strategy="median")),
+                        ("classifier", GaussianNB(
+                            var_smoothing=s,  # Добавочная величина к дисперсии выборки для стабилизации вычисления
+                            priors=None  # Можно задать вероятности классов самому, но лучше оставить None, так программа
+                            # посчитает сама, а сидеть и задавать всем классам вероятности не самое весёлое занятие
+                            # так что делать этого я не буду, просто оставлю как показатель того что это возможно.
+                        ))
+                    ])
+                    mean_score = tenV(model)
 
-        results.append({
-            "var_smoothing": s,
-            "mean_score": mean_score
-        })
+                    results.append({
+                        "var_smoothing": s,
+                        "mean_score": mean_score
+                    })
 
-    results_df = pd.DataFrame(results)
-    results_df.to_csv(
-        "naive_bayes_results.csv",
-        index=False,
-        encoding="utf-8-sig"
-    )
-    best_result = results_df.loc[results_df["mean_score"].idxmax()]
-    print("\n===================================")
-    print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
-    print("===================================")
+                results_df = pd.DataFrame(results)
+                results_df.to_csv(
+                    "naive_bayes_results.csv",
+                    index=False,
+                    encoding="utf-8-sig"
+                )
+                best_result = results_df.loc[results_df["mean_score"].idxmax()]
+                print("\n===================================")
+                print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
+                print("===================================")
 
-    print(f"Добавочная дисперсия: {best_result['var_smoothing']}")
-    print(f"Средняя точность: {best_result['mean_score']:.4f}")
+                print(f"Добавочная дисперсия: {best_result['var_smoothing']}")
+                print(f"Средняя точность: {best_result['mean_score']:.4f}")
 
-    print("\nВсе результаты:")
-    print(results_df.sort_values(
-        by="mean_score",
-        ascending=False
-    ).to_string(index=False))
+                print("\nВсе результаты:")
+                print(results_df.sort_values(
+                    by="mean_score",
+                    ascending=False
+                ).to_string(index=False))
 
-    print("\nРезультаты сохранены в naive_bayes_results.csv")
+                print("\nРезультаты сохранены в naive_bayes_results.csv")
 
-    # SVM
-    results = []
+                # SVM
+                results = []
 
-    for C in [0.1, 1, 10, 100]:
-        for gamma in ["scale", "auto", 0.001, 0.01, 0.1, 1]:
-            print(f"Fine: {C}")
-            print(f"Gamma: {gamma}")
-            model = Pipeline([
-                ("imputer", SimpleImputer(strategy="median")),
-                ("scaler", StandardScaler()),
-                ("classifier", SVC(
-                    C=C,          # Штраф за ошибку классификации, меньше штраф - проще гиперплоскость,
-                                    # больше штраф - выше шанс переобучения.
-                    kernel="rbf",   # Форма гиперплоскости. Linear - линейная граница, rbf - нелинейная граница,
-                                    # poly - полиномиальная, sigmoid - граница на основе сигмоидальной функции.
-                    gamma=gamma   # Влияние отдельных объектов на форму границы, условно то насколько сложную
-                                    # фигуру построит алгоритм, низкое значение - "мягкая" форма повторяющая
-                                    # форму границы классов плавно, высокое значение - "жесткая" форма,
-                                    # как-бы "плотно" огибающая оба класса. "scale" значит автоматический расчёт значения.
-                ))
-            ])
-            mean_score = tenV(model)
+                for C in [0.1, 1, 10, 100]:
+                    for gamma in ["scale", "auto", 0.001, 0.01, 0.1, 1]:
+                        print(f"Fine: {C}")
+                        print(f"Gamma: {gamma}")
+                        model = Pipeline([
+                            ("imputer", SimpleImputer(strategy="median")),
+                            ("scaler", StandardScaler()),
+                            ("classifier", SVC(
+                                C=C,          # Штраф за ошибку классификации, меньше штраф - проще гиперплоскость,
+                                                # больше штраф - выше шанс переобучения.
+                                kernel="rbf",   # Форма гиперплоскости. Linear - линейная граница, rbf - нелинейная граница,
+                                                # poly - полиномиальная, sigmoid - граница на основе сигмоидальной функции.
+                                gamma=gamma   # Влияние отдельных объектов на форму границы, условно то насколько сложную
+                                                # фигуру построит алгоритм, низкое значение - "мягкая" форма повторяющая
+                                                # форму границы классов плавно, высокое значение - "жесткая" форма,
+                                                # как-бы "плотно" огибающая оба класса. "scale" значит автоматический расчёт значения.
+                            ))
+                        ])
+                        mean_score = tenV(model)
 
-            results.append({
-                "C": C,
-                "gamma": gamma,
-                "mean_score": mean_score
-            })
+                        results.append({
+                            "C": C,
+                            "gamma": gamma,
+                            "mean_score": mean_score
+                        })
 
-    results_df = pd.DataFrame(results)
-    results_df.to_csv(
-        "SVM_results.csv",
-        index=False,
-        encoding="utf-8-sig"
-    )
-    best_result = results_df.loc[results_df["mean_score"].idxmax()]
-    print("\n===================================")
-    print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
-    print("===================================")
+                results_df = pd.DataFrame(results)
+                results_df.to_csv(
+                    "SVM_results.csv",
+                    index=False,
+                    encoding="utf-8-sig"
+                )
+                best_result = results_df.loc[results_df["mean_score"].idxmax()]
+                print("\n===================================")
+                print("       ЛУЧШИЕ ГИПЕРПАРАМЕТРЫ")
+                print("===================================")
 
-    print(f"Fine: {best_result['C']}")
-    print(f"gamma: {best_result['gamma']}")
-    print(f"Средняя точность: {best_result['mean_score']:.4f}")
+                print(f"Fine: {best_result['C']}")
+                print(f"gamma: {best_result['gamma']}")
+                print(f"Средняя точность: {best_result['mean_score']:.4f}")
 
-    print("\nВсе результаты:")
-    print(results_df.sort_values(
-        by="mean_score",
-        ascending=False
-    ).to_string(index=False))
+                print("\nВсе результаты:")
+                print(results_df.sort_values(
+                    by="mean_score",
+                    ascending=False
+                ).to_string(index=False))
 
-    print("\nРезультаты сохранены в SVM_results.csv")
+                print("\nРезультаты сохранены в SVM_results.csv")
+            else:
+                print("Операция прервана!")
+            continue
